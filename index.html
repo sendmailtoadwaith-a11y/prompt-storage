@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompt Vault</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --surface: #131720;
+    --surface-2: #1a1f2b;
+    --border: #262c3a;
+    --text: #e8ebf2;
+    --muted: #8b93a7;
+    --accent: #7c6cff;
+    --accent-2: #5b8cff;
+    --danger: #ff5c6c;
+    --success: #34d399;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 80% -10%, rgba(124,108,255,.12), transparent 60%), var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 1.9rem; letter-spacing: -.02em; }
+  header h1 span { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  header p { color: var(--muted); margin-top: 4px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; margin-bottom: 28px; }
+  .panel h2 { font-size: 1.05rem; margin-bottom: 16px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.full { grid-column: 1 / -1; }
+  .field.span2 { grid-column: span 2; }
+  label { font-size: .8rem; color: var(--muted); font-weight: 500; }
+  input, select, textarea {
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 11px 13px; font: inherit; outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,108,255,.18); }
+  textarea { min-height: 160px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88rem; }
+
+  .btn {
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    padding: 9px 14px; border-radius: 10px; font: inherit; font-size: .85rem; font-weight: 500;
+    cursor: pointer; transition: transform .15s, background .2s, border-color .2s, opacity .2s;
+  }
+  .btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+  .btn.primary { background: linear-gradient(90deg, var(--accent), var(--accent-2)); border: none; color: #fff; padding: 12px 22px; font-size: .92rem; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .btn.copied { border-color: var(--success); color: var(--success); }
+  .form-actions { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+  .status { font-size: .85rem; }
+  .status.ok { color: var(--success); }
+  .status.err { color: var(--danger); }
+
+  .toolbar { display: flex; flex-direction: column; gap: 14px; margin-bottom: 22px; }
+  .search { width: 100%; padding-left: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%238b93a7' stroke-width='2' stroke-linecap='round' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: 13px center; }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill {
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    padding: 7px 15px; border-radius: 999px; font: inherit; font-size: .83rem; cursor: pointer;
+    transition: all .2s;
+  }
+  .pill:hover { color: var(--text); border-color: var(--accent); }
+  .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+  }
+  .card:hover { transform: translateY(-3px); border-color: #38405a; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .card h3 { font-size: 1.02rem; line-height: 1.3; word-break: break-word; }
+  .badge { font-size: .7rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; background: rgba(124,108,255,.15); color: #b3a9ff; border: 1px solid rgba(124,108,255,.3); }
+  .content {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .82rem;
+    color: #cfd4e3; white-space: pre-wrap; word-break: break-word;
+    max-height: 180px; overflow-y: auto; flex: 1;
+  }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: .73rem; color: var(--muted); background: var(--surface-2); padding: 2px 9px; border-radius: 6px; border: 1px solid var(--border); }
+  .card-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .date { font-size: .75rem; color: var(--muted); }
+  .actions { display: flex; gap: 8px; }
+
+  .empty { text-align: center; color: var(--muted); padding: 60px 20px; border: 1px dashed var(--border); border-radius: var(--radius); }
+  .setup-warn { background: rgba(255,92,108,.08); border: 1px solid rgba(255,92,108,.4); color: #ffb3bb; padding: 14px 18px; border-radius: var(--radius); margin-bottom: 24px; font-size: .9rem; display: none; }
+
+  @media (max-width: 760px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .field.span2 { grid-column: auto; }
+    .grid { grid-template-columns: 1fr; }
+    header h1 { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<!--
+=====================================================================
+ DATABASE SETUP (run once in Supabase → SQL Editor → New query)
+=====================================================================
+
+create table if not exists public.prompts (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  title      text not null,
+  category   text not null default 'Other',
+  tags       text[] not null default '{}',
+  content    text not null
+);
+
+alter table public.prompts enable row level security;
+
+create policy "Public read prompts"   on public.prompts for select to anon using (true);
+create policy "Public insert prompts" on public.prompts for insert to anon with check (true);
+create policy "Public delete prompts" on public.prompts for delete to anon using (true);
+
+=====================================================================
+-->
+
+<div class="container">
+  <header>
+    <h1>Prompt <span>Vault</span></h1>
+    <p>Save, search and reuse your best AI prompts.</p>
+  </header>
+
+  <div id="setupWarn" class="setup-warn">
+    Supabase isn't configured yet. Open <code>index.html</code> and set <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> at the top of the script.
+  </div>
+
+  <section class="panel">
+    <h2>Add New Prompt</h2>
+    <form id="promptForm">
+      <div class="form-grid">
+        <div class="field span2">
+          <label for="title">Prompt Title</label>
+          <input id="title" type="text" placeholder="e.g. Code review assistant" required maxlength="150">
+        </div>
+        <div class="field">
+          <label for="category">Category</label>
+          <select id="category" required>
+            <option>Coding</option>
+            <option>Writing</option>
+            <option>Marketing</option>
+            <option>Business</option>
+            <option>Image Generation</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label for="tags">Tags (comma-separated)</label>
+          <input id="tags" type="text" placeholder="e.g. python, review, refactor">
+        </div>
+        <div class="field full">
+          <label for="content">Prompt Content</label>
+          <textarea id="content" placeholder="Paste or write your prompt here..." required></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="saveBtn" type="submit">Save Prompt</button>
+        <span id="formStatus" class="status"></span>
+      </div>
+    </form>
+  </section>
+
+  <section>
+    <div class="toolbar">
+      <input id="search" class="search" type="search" placeholder="Search by title, text or tags...">
+      <div id="pills" class="pills"></div>
+    </div>
+    <div id="grid" class="grid"></div>
+    <div id="empty" class="empty" style="display:none"></div>
+  </section>
+</div>
+
+<script>
+  // ============ CONFIG: paste your Supabase credentials here ============
+  const SUPABASE_URL = "YOUR_SUPABASE_URL";           // e.g. https://abcdxyz.supabase.co
+  const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"; // Project Settings → API → anon public key
+  // ======================================================================
+
+  const CATEGORIES = ["All", "Coding", "Writing", "Marketing", "Business", "Image Generation", "Other"];
+  const configured = !SUPABASE_URL.startsWith("YOUR_") && !SUPABASE_ANON_KEY.startsWith("YOUR_");
+  const db = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+  const $ = (id) => document.getElementById(id);
+  let prompts = [];
+  let activeCategory = "All";
+  let query = "";
+
+  if (!configured) $("setupWarn").style.display = "block";
+
+  function esc(str) {
+    const d = document.createElement("div");
+    d.textContent = str ?? "";
+    return d.innerHTML;
+  }
+
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  // ---------- Category pills ----------
+  function renderPills() {
+    $("pills").innerHTML = CATEGORIES.map(c =>
+      `<button type="button" class="pill ${c === activeCategory ? "active" : ""}" data-cat="${esc(c)}">${esc(c)}</button>`
+    ).join("");
+  }
+  $("pills").addEventListener("click", (e) => {
+    const btn = e.target.closest(".pill");
+    if (!btn) return;
+    activeCategory = btn.dataset.cat;
+    renderPills();
+    render();
+  });
+
+  // ---------- Search ----------
+  $("search").addEventListener("input", (e) => {
+    query = e.target.value.trim().toLowerCase();
+    render();
+  });
+
+  // ---------- Render cards ----------
+  function render() {
+    const list = prompts.filter(p => {
+      if (activeCategory !== "All" && p.category !== activeCategory) return false;
+      if (!query) return true;
+      const hay = [p.title, p.content, (p.tags || []).join(" ")].join(" ").toLowerCase();
+      return hay.includes(query);
+    });
+
+    const grid = $("grid"), empty = $("empty");
+    if (!list.length) {
+      grid.innerHTML = "";
+      empty.style.display = "block";
+      empty.textContent = prompts.length ? "No prompts match your search or filter." : "No prompts yet. Add your first one above.";
+      return;
+    }
+    empty.style.display = "none";
+    grid.innerHTML = list.map(p => `
+      <article class="card" data-id="${esc(p.id)}">
+        <div class="card-head">
+          <h3>${esc(p.title)}</h3>
+          <span class="badge">${esc(p.category)}</span>
+        </div>
+        <div class="content">${esc(p.content)}</div>
+        ${(p.tags && p.tags.length) ? `<div class="tags">${p.tags.map(t => `<span class="tag">#${esc(t)}</span>`).join("")}</div>` : ""}
+        <div class="card-foot">
+          <span class="date">${fmtDate(p.created_at)}</span>
+          <div class="actions">
+            <button class="btn" data-action="copy">Copy</button>
+            <button class="btn danger" data-action="delete">Delete</button>
+          </div>
+        </div>
+      </article>
+    `).join("");
+  }
+
+  // ---------- Card actions (copy / delete) ----------
+  $("grid").addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+    const id = btn.closest(".card").dataset.id;
+    const prompt = prompts.find(p => p.id === id);
+    if (!prompt) return;
+
+    if (btn.dataset.action === "copy") {
+      try {
+        await navigator.clipboard.writeText(prompt.content);
+      } catch {
+        const ta = document.createElement("textarea");
+        ta.value = prompt.content;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      btn.textContent = "Copied!";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1600);
+    }
+
+    if (btn.dataset.action === "delete") {
+      if (!confirm(`Delete "${prompt.title}"? This cannot be undone.`)) return;
+      btn.disabled = true;
+      btn.textContent = "Deleting...";
+      const { error } = await db.from("prompts").delete().eq("id", id);
+      if (error) {
+        alert("Delete failed: " + error.message);
+        btn.disabled = false;
+        btn.textContent = "Delete";
+        return;
+      }
+      prompts = prompts.filter(p => p.id !== id);
+      render();
+    }
+  });
+
+  // ---------- Load prompts ----------
+  async function loadPrompts() {
+    if (!db) { render(); return; }
+    $("empty").style.display = "block";
+    $("empty").textContent = "Loading prompts...";
+    const { data, error } = await db.from("prompts").select("*").order("created_at", { ascending: false });
+    if (error) {
+      $("empty").textContent = "Could not load prompts: " + error.message;
+      return;
+    }
+    prompts = data || [];
+    render();
+  }
+
+  // ---------- Save prompt ----------
+  $("promptForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const status = $("formStatus"), btn = $("saveBtn");
+    if (!db) {
+      status.className = "status err";
+      status.textContent = "Add your Supabase URL and key first.";
+      return;
+    }
+    const tags = $("tags").value.split(",").map(t => t.trim().replace(/^#/, "")).filter(Boolean);
+    const row = {
+      title: $("title").value.trim(),
+      category: $("category").value,
+      tags,
+      content: $("content").value.trim()
+    };
+    if (!row.title || !row.content) return;
+
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    status.className = "status";
+    status.textContent = "";
+
+    const { data, error } = await db.from("prompts").insert(row).select().single();
+
+    btn.disabled = false;
+    btn.textContent = "Save Prompt";
+
+    if (error) {
+      status.className = "status err";
+      status.textContent = "Error: " + error.message;
+      return;
+    }
+    prompts.unshift(data);
+    render();
+    $("promptForm").reset();
+    status.className = "status ok";
+    status.textContent = "Prompt saved ✓";
+    setTimeout(() => { status.textContent = ""; }, 3000);
+  });
+
+  renderPills();
+  loadPrompts();
+</script>
+</body>
+</html>
